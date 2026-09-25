@@ -227,7 +227,8 @@ public class MongoChangeStreamSource implements ConfigChangeSource {
         return null;
     }
 
-    private static String valueOf(Document doc) {
+    /** The value as the cache sees it, or null if the document has none. */
+    static String valueOf(Document doc) {
         Object value = doc.get(VALUE_FIELD);
         if (value == null) {
             return null;

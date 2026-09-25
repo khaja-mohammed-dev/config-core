@@ -10,6 +10,7 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import io.github.khajamohammeddev.configcore.api.ConfigCache;
+import io.github.khajamohammeddev.configcore.api.ConfigUpdate;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -143,10 +144,11 @@ class MongoChangeStreamSourceIT {
     void writerChangesReachTheCacheAndKeepOtherFields() {
         collection.insertOne(entry("feature.x.enabled", "false").append("description", "kept"));
         source.start(cache);
-        MongoConfigWriter writer = new MongoConfigWriter(collection);
+        MongoConfigWriter writer = new MongoConfigWriter(client, collection,
+                new MongoConfigHistory(client.getDatabase("configcore").getCollection("history_" + UUID.randomUUID())));
 
-        writer.put("feature.x.enabled", "true");
-        writer.put("brand.new", "1");
+        writer.write(new ConfigUpdate("feature.x.enabled", "true", "tester", null));
+        writer.write(new ConfigUpdate("brand.new", "1", "tester", null));
 
         awaitCache().until(cache::getAll, Map.of("feature.x.enabled", "true", "brand.new", "1")::equals);
         assertThat(collection.find(eq("_id", "feature.x.enabled")).first())

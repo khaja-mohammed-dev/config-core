@@ -1,12 +1,21 @@
 package io.github.khajamohammeddev.configcore.spring;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.khajamohammeddev.configcore.api.ConfigHistory;
+import io.github.khajamohammeddev.configcore.api.ConfigHistoryEntry;
+import io.github.khajamohammeddev.configcore.api.ConfigUpdate;
 import io.github.khajamohammeddev.configcore.api.ConfigWriter;
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.http.HttpMessageConvertersAutoConfiguration;
@@ -69,29 +78,82 @@ class ConfigCoreEndpointAutoConfigurationTest {
     @Test
     void requiresTheSecretHeader() {
         runWithEndpoint((mvc, writer) -> {
-            expect(mvc, update("{\"key\":\"a\",\"value\":\"1\"}"), status().isUnauthorized());
-            expect(mvc, update("{\"key\":\"a\",\"value\":\"1\"}")
-                    .header(InternalConfigController.SECRET_HEADER, SECRET + "x"), status().isUnauthorized());
+            String body = "{\"key\":\"a\",\"value\":\"1\",\"changedBy\":\"alice\"}";
+            expect(mvc, update(body), status().isUnauthorized());
+            expect(mvc, update(body).header(InternalConfigController.SECRET_HEADER, SECRET + "x"),
+                    status().isUnauthorized());
+            expect(mvc, get("/internal/config/history").param("key", "a"), status().isUnauthorized());
             assertThat(writer.written).isEmpty();
         });
     }
 
     @Test
-    void writesWithValidSecret() {
+    void writesWithValidSecretAndReturnsTheHistoryEntry() {
         runWithEndpoint((mvc, writer) -> {
-            expect(mvc, authorized(update("{\"key\":\"feature.x.enabled\",\"value\":\"true\"}")),
-                    status().isNoContent());
+            mvc.perform(authorized(update(
+                            "{\"key\":\"feature.x.enabled\",\"value\":\"true\",\"changedBy\":\"alice\",\"comment\":\"launch\"}")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.key").value("feature.x.enabled"))
+                    .andExpect(jsonPath("$.version").value(1))
+                    .andExpect(jsonPath("$.oldValue").doesNotExist())
+                    .andExpect(jsonPath("$.newValue").value("true"))
+                    .andExpect(jsonPath("$.changedBy").value("alice"))
+                    .andExpect(jsonPath("$.changedAt").value("2026-09-25T10:00:00Z"))
+                    .andExpect(jsonPath("$.comment").value("launch"));
             assertThat(writer.written).isEqualTo(Map.of("feature.x.enabled", "true"));
+        });
+    }
+
+    @Test
+    void unchangedValueReturnsNoContent() {
+        runWithEndpoint((mvc, writer) -> {
+            String body = "{\"key\":\"a\",\"value\":\"1\",\"changedBy\":\"alice\"}";
+            expect(mvc, authorized(update(body)), status().isOk());
+            expect(mvc, authorized(update(body)), status().isNoContent());
         });
     }
 
     @Test
     void rejectsIncompleteRequests() {
         runWithEndpoint((mvc, writer) -> {
-            expect(mvc, authorized(update("{\"key\":\"a\"}")), status().isBadRequest());
-            expect(mvc, authorized(update("{\"key\":\" \",\"value\":\"1\"}")), status().isBadRequest());
+            expect(mvc, authorized(update("{\"key\":\"a\",\"changedBy\":\"alice\"}")), status().isBadRequest());
+            expect(mvc, authorized(update("{\"key\":\" \",\"value\":\"1\",\"changedBy\":\"alice\"}")),
+                    status().isBadRequest());
+            expect(mvc, authorized(update("{\"key\":\"a\",\"value\":\"1\"}")), status().isBadRequest());
+            expect(mvc, authorized(update("{\"key\":\"a\",\"value\":\"1\",\"changedBy\":\" \"}")),
+                    status().isBadRequest());
             expect(mvc, authorized(post("/internal/config/update")), status().isBadRequest());
             assertThat(writer.written).isEmpty();
+        });
+    }
+
+    @Test
+    void historyReturnsNewestFirstWithLimit() {
+        runWithEndpoint((mvc, writer) -> {
+            for (int i = 1; i <= 3; i++) {
+                writer.write(new ConfigUpdate("a", "v" + i, "alice", null));
+            }
+            writer.write(new ConfigUpdate("b", "x", "bob", null));
+
+            mvc.perform(authorized(get("/internal/config/history").param("key", "a")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(3))
+                    .andExpect(jsonPath("$[0].version").value(3))
+                    .andExpect(jsonPath("$[0].oldValue").value("v2"));
+            mvc.perform(authorized(get("/internal/config/history").param("key", "a").param("limit", "1")))
+                    .andExpect(jsonPath("$.length()").value(1));
+            mvc.perform(authorized(get("/internal/config/history").param("key", "missing")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(0));
+        });
+    }
+
+    @Test
+    void historyValidatesParameters() {
+        runWithEndpoint((mvc, writer) -> {
+            expect(mvc, authorized(get("/internal/config/history")), status().isBadRequest());
+            expect(mvc, authorized(get("/internal/config/history").param("key", "a").param("limit", "0")),
+                    status().isBadRequest());
         });
     }
 
@@ -127,12 +189,27 @@ class ConfigCoreEndpointAutoConfigurationTest {
         }
     }
 
-    static class FakeWriter implements ConfigWriter {
+    /** In-memory writer + history, versioning the same way the Mongo one does. */
+    static class FakeWriter implements ConfigWriter, ConfigHistory {
         final Map<String, String> written = new ConcurrentHashMap<>();
+        final List<ConfigHistoryEntry> entries = new CopyOnWriteArrayList<>();
 
         @Override
-        public void put(String key, String value) {
-            written.put(key, value);
+        public synchronized Optional<ConfigHistoryEntry> write(ConfigUpdate update) {
+            String old = written.put(update.key(), update.value());
+            if (update.value().equals(old)) {
+                return Optional.empty();
+            }
+            long version = entries.stream().filter(e -> e.key().equals(update.key())).count() + 1;
+            ConfigHistoryEntry entry = new ConfigHistoryEntry(update.key(), version, old, update.value(),
+                    update.changedBy(), Instant.parse("2026-09-25T10:00:00Z"), update.comment());
+            entries.add(0, entry);
+            return Optional.of(entry);
+        }
+
+        @Override
+        public List<ConfigHistoryEntry> history(String key, int limit) {
+            return entries.stream().filter(e -> e.key().equals(key)).limit(limit).toList();
         }
     }
 }

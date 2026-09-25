@@ -4,7 +4,9 @@ import static com.mongodb.client.model.Filters.eq;
 import static com.mongodb.client.model.Updates.set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.mongodb.client.MongoClient;
@@ -94,17 +96,32 @@ class ConfigCoreAutoConfigurationIT {
                             .webAppContextSetup((WebApplicationContext) context.getSourceApplicationContext())
                             .build();
 
-                    mvc.perform(post("/internal/config/update")
-                                    .header(InternalConfigController.SECRET_HEADER, secret)
-                                    .contentType(MediaType.APPLICATION_JSON)
-                                    .content("{\"key\":\"limits.max\",\"value\":\"50\"}"))
-                            .andExpect(status().isNoContent());
+                    for (String value : new String[] {"50", "80"}) {
+                        mvc.perform(post("/internal/config/update")
+                                        .header(InternalConfigController.SECRET_HEADER, secret)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content("{\"key\":\"limits.max\",\"value\":\"" + value + "\",\"changedBy\":\"alice\"}"))
+                                .andExpect(status().isOk());
+                    }
 
                     assertThat(client.getDatabase("endpoint").getCollection("config")
                             .find(eq("_id", "limits.max")).first())
-                            .containsEntry("value", "50");
+                            .containsEntry("value", "80");
                     ConfigService config = context.getBean(ConfigService.class);
-                    await().atMost(PROPAGATION).until(() -> config.get("limits.max", ""), "50"::equals);
+                    await().atMost(PROPAGATION).until(() -> config.get("limits.max", ""), "80"::equals);
+
+                    // History lands in <collection>_history and is served newest first
+                    mvc.perform(get("/internal/config/history")
+                                    .header(InternalConfigController.SECRET_HEADER, secret)
+                                    .param("key", "limits.max"))
+                            .andExpect(status().isOk())
+                            .andExpect(jsonPath("$.length()").value(2))
+                            .andExpect(jsonPath("$[0].version").value(2))
+                            .andExpect(jsonPath("$[0].oldValue").value("50"))
+                            .andExpect(jsonPath("$[0].newValue").value("80"))
+                            .andExpect(jsonPath("$[0].changedBy").value("alice"));
+                    assertThat(client.getDatabase("endpoint").getCollection("config_history").countDocuments())
+                            .isEqualTo(2);
                 });
     }
 }

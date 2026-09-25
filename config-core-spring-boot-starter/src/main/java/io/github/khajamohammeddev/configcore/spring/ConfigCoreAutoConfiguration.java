@@ -6,8 +6,10 @@ import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import io.github.khajamohammeddev.configcore.api.ConfigCache;
 import io.github.khajamohammeddev.configcore.api.ConfigChangeSource;
+import io.github.khajamohammeddev.configcore.api.ConfigHistory;
 import io.github.khajamohammeddev.configcore.api.ConfigWriter;
 import io.github.khajamohammeddev.configcore.mongo.MongoChangeStreamSource;
+import io.github.khajamohammeddev.configcore.mongo.MongoConfigHistory;
 import io.github.khajamohammeddev.configcore.mongo.MongoConfigWriter;
 import org.bson.Document;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -72,14 +74,31 @@ public class ConfigCoreAutoConfiguration {
         }
 
         @Bean
+        @ConditionalOnMissingBean(ConfigHistory.class)
+        MongoConfigHistory configCoreHistory(ConfigCoreMongoClient client, ConfigCoreProperties properties) {
+            ConfigCoreProperties.Mongo mongo = properties.getMongo();
+            String name = mongo.getHistoryCollection() != null
+                    ? mongo.getHistoryCollection()
+                    : mongo.getCollection() + "_history";
+            MongoConfigHistory history = new MongoConfigHistory(collection(client, name));
+            history.ensureIndexes();
+            return history;
+        }
+
+        @Bean
         @ConditionalOnMissingBean
-        ConfigWriter configCoreWriter(ConfigCoreMongoClient client, ConfigCoreProperties properties) {
-            return new MongoConfigWriter(configCollection(client, properties));
+        ConfigWriter configCoreWriter(ConfigCoreMongoClient client, ConfigCoreProperties properties,
+                MongoConfigHistory history) {
+            return new MongoConfigWriter(client.client(), configCollection(client, properties), history);
         }
 
         private static MongoCollection<Document> configCollection(
                 ConfigCoreMongoClient client, ConfigCoreProperties properties) {
-            return client.client().getDatabase(client.database()).getCollection(properties.getMongo().getCollection());
+            return collection(client, properties.getMongo().getCollection());
+        }
+
+        private static MongoCollection<Document> collection(ConfigCoreMongoClient client, String name) {
+            return client.client().getDatabase(client.database()).getCollection(name);
         }
     }
 
