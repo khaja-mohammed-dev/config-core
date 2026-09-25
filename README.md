@@ -73,11 +73,18 @@ config-core:
     heartbeat-interval: 15s            # default
 ```
 
-- **`internal.secret`** enables `POST /internal/config/update` (`{"key": "...", "value": "..."}`), through which the
-  admin app changes config using *this service's* database credentials. Callers must send the secret in the
-  `X-Config-Core-Secret` header. Without a secret the endpoint does not exist. Serve it over HTTPS only.
+- **`internal.secret`** enables the internal endpoints, through which the admin app changes config using *this
+  service's* database credentials. Callers must send the secret in the `X-Config-Core-Secret` header. Without a
+  secret the endpoints do not exist. Serve them over HTTPS only.
+  - `POST /internal/config/update` with `{"key": "...", "value": "...", "changedBy": "alice", "comment": "optional"}`
+    returns the recorded history entry (200), or 204 if the value was already set.
+  - `GET /internal/config/history?key=...&limit=50` returns that key's changes, newest first.
 - **`admin.url`** makes the instance register with the admin app on startup, send heartbeats, and deregister on
   shutdown. If the admin app is down or unreachable the service still starts and keeps retrying in the background.
+- **History:** every change made through config-core is appended to `<collection>_history` (key, version, old and
+  new value, who, when, comment) in the same transaction as the change itself. To **roll back**, write the old value
+  again, e.g. with `"comment": "Reverted to v3"`; history is never rewritten. Changes made directly in the database
+  still reach every cache but are not recorded.
 - If your app uses **Spring Security**, permit `/internal/config/**` and exclude it from CSRF protection; the shared
   secret is what authenticates these calls.
 

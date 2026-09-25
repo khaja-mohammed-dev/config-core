@@ -147,6 +147,9 @@ public class ConfigCoreProperties {
         /** Collection holding one document per config key. */
         private String collection = "config";
 
+        /** Append-only collection recording every change made through config-core. Defaults to {@code <collection>_history}. */
+        private String historyCollection;
+
         public String getUri() {
             return uri;
         }
@@ -169,6 +172,14 @@ public class ConfigCoreProperties {
 
         public void setCollection(String collection) {
             this.collection = collection;
+        }
+
+        public String getHistoryCollection() {
+            return historyCollection;
+        }
+
+        public void setHistoryCollection(String historyCollection) {
+            this.historyCollection = historyCollection;
         }
     }
 }

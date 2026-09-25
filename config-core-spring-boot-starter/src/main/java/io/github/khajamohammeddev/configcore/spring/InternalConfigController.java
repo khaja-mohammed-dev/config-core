@@ -1,16 +1,22 @@
 package io.github.khajamohammeddev.configcore.spring;
 
+import io.github.khajamohammeddev.configcore.api.ConfigHistory;
+import io.github.khajamohammeddev.configcore.api.ConfigHistoryEntry;
+import io.github.khajamohammeddev.configcore.api.ConfigUpdate;
 import io.github.khajamohammeddev.configcore.api.ConfigWriter;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -24,34 +30,61 @@ import org.springframework.web.bind.annotation.RestController;
 class InternalConfigController {
 
     static final String SECRET_HEADER = "X-Config-Core-Secret";
+    static final int DEFAULT_HISTORY_LIMIT = 50;
+    static final int MAX_HISTORY_LIMIT = 500;
 
     private static final Logger log = LoggerFactory.getLogger(InternalConfigController.class);
 
     private final ConfigWriter writer;
+    private final ConfigHistory history;
     private final byte[] secret;
 
-    InternalConfigController(ConfigWriter writer, String secret) {
+    InternalConfigController(ConfigWriter writer, ConfigHistory history, String secret) {
         this.writer = writer;
+        this.history = history;
         this.secret = secret.getBytes(StandardCharsets.UTF_8);
     }
 
     /**
-     * Writes the value to the store and returns 204 once it is persisted. Caches, including this
-     * instance's, update shortly after through the change stream.
+     * Writes the value and its history entry. Returns 200 with the recorded {@link ConfigHistoryEntry},
+     * or 204 if the key already had this value. Caches, including this instance's, update shortly
+     * after through the change stream.
+     *
+     * <p>To roll back, send the historical value again with a comment such as {@code "Reverted to v3"}.
      */
     @PostMapping("/update")
-    ResponseEntity<Void> update(
+    ResponseEntity<ConfigHistoryEntry> update(
             @RequestHeader(name = SECRET_HEADER, required = false) String providedSecret,
             @RequestBody(required = false) UpdateRequest request) {
         if (!secretMatches(providedSecret)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        if (request == null || request.key() == null || request.key().isBlank() || request.value() == null) {
+        if (request == null || isBlank(request.key()) || request.value() == null || isBlank(request.changedBy())) {
             return ResponseEntity.badRequest().build();
         }
-        writer.put(request.key(), request.value());
-        log.info("Config '{}' updated via internal endpoint", request.key());
-        return ResponseEntity.noContent().build();
+        return writer.write(new ConfigUpdate(request.key(), request.value(), request.changedBy(), request.comment()))
+                .map(entry -> {
+                    log.info("Config '{}' updated to v{} by {} via internal endpoint",
+                            entry.key(), entry.version(), entry.changedBy());
+                    return ResponseEntity.ok(entry);
+                })
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    /** Changes to one key, newest first. {@code limit} defaults to 50 and is capped at 500. */
+    @GetMapping("/history")
+    ResponseEntity<List<ConfigHistoryEntry>> history(
+            @RequestHeader(name = SECRET_HEADER, required = false) String providedSecret,
+            @RequestParam(required = false) String key,
+            @RequestParam(required = false) Integer limit) {
+        if (!secretMatches(providedSecret)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (isBlank(key) || (limit != null && limit <= 0)) {
+            return ResponseEntity.badRequest().build();
+        }
+        int effectiveLimit = limit == null ? DEFAULT_HISTORY_LIMIT : Math.min(limit, MAX_HISTORY_LIMIT);
+        return ResponseEntity.ok(history.history(key, effectiveLimit));
     }
 
     private boolean secretMatches(String provided) {
@@ -59,6 +92,11 @@ class InternalConfigController {
         return provided != null && MessageDigest.isEqual(provided.getBytes(StandardCharsets.UTF_8), secret);
     }
 
-    record UpdateRequest(String key, String value) {
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
+    }
+
+    /** {@code changedBy} is the admin app's authenticated user; {@code comment} is optional. */
+    record UpdateRequest(String key, String value, String changedBy, String comment) {
     }
 }
