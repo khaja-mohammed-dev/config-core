@@ -3,9 +3,13 @@ package io.github.khajamohammeddev.configcore.spring;
 import com.mongodb.ConnectionString;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoCollection;
 import io.github.khajamohammeddev.configcore.api.ConfigCache;
 import io.github.khajamohammeddev.configcore.api.ConfigChangeSource;
+import io.github.khajamohammeddev.configcore.api.ConfigWriter;
 import io.github.khajamohammeddev.configcore.mongo.MongoChangeStreamSource;
+import io.github.khajamohammeddev.configcore.mongo.MongoConfigWriter;
+import org.bson.Document;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -19,7 +23,8 @@ import org.springframework.context.annotation.Configuration;
  * memory and exposes it as a {@link ConfigService} bean.
  *
  * <p>Applications can replace the backing store by defining their own {@link ConfigChangeSource}
- * bean; the Mongo connection is then not created at all.
+ * bean (plus a {@link ConfigWriter} if they want the internal update endpoint); the Mongo
+ * connection is then not created at all.
  */
 @AutoConfiguration
 @ConditionalOnProperty(prefix = "config-core", name = "enabled", havingValue = "true", matchIfMissing = true)
@@ -63,9 +68,18 @@ public class ConfigCoreAutoConfiguration {
 
         @Bean(destroyMethod = "stop")
         ConfigChangeSource configCoreChangeSource(ConfigCoreMongoClient client, ConfigCoreProperties properties) {
-            return new MongoChangeStreamSource(client.client()
-                    .getDatabase(client.database())
-                    .getCollection(properties.getMongo().getCollection()));
+            return new MongoChangeStreamSource(configCollection(client, properties));
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        ConfigWriter configCoreWriter(ConfigCoreMongoClient client, ConfigCoreProperties properties) {
+            return new MongoConfigWriter(configCollection(client, properties));
+        }
+
+        private static MongoCollection<Document> configCollection(
+                ConfigCoreMongoClient client, ConfigCoreProperties properties) {
+            return client.client().getDatabase(client.database()).getCollection(properties.getMongo().getCollection());
         }
     }
 

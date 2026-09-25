@@ -1,5 +1,6 @@
 package io.github.khajamohammeddev.configcore.spring;
 
+import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /** Settings under {@code config-core.*} in {@code application.yml}. */
@@ -9,7 +10,16 @@ public class ConfigCoreProperties {
     /** Whether to start config-core at all. */
     private boolean enabled = true;
 
+    /** Team that owns this service, e.g. {@code team-a}. The admin app uses it to decide who can see it. */
+    private String team;
+
     private final Mongo mongo = new Mongo();
+
+    private final Internal internal = new Internal();
+
+    private final Admin admin = new Admin();
+
+    private final Instance instance = new Instance();
 
     public boolean isEnabled() {
         return enabled;
@@ -19,8 +29,108 @@ public class ConfigCoreProperties {
         this.enabled = enabled;
     }
 
+    public String getTeam() {
+        return team;
+    }
+
+    public void setTeam(String team) {
+        this.team = team;
+    }
+
     public Mongo getMongo() {
         return mongo;
+    }
+
+    public Internal getInternal() {
+        return internal;
+    }
+
+    public Admin getAdmin() {
+        return admin;
+    }
+
+    public Instance getInstance() {
+        return instance;
+    }
+
+    public static class Internal {
+
+        /**
+         * Shared secret the admin app must send in the {@code X-Config-Core-Secret} header to call
+         * {@code POST /internal/config/update}. The endpoint does not exist unless this is set.
+         * At least 16 characters.
+         */
+        private String secret;
+
+        public String getSecret() {
+            return secret;
+        }
+
+        public void setSecret(String secret) {
+            this.secret = secret;
+        }
+    }
+
+    public static class Admin {
+
+        /** Base URL of the config-admin app, e.g. {@code https://config-admin.internal}. Registration is off unless set. */
+        private String url;
+
+        /** How often to send a heartbeat to the admin app. */
+        private Duration heartbeatInterval = Duration.ofSeconds(15);
+
+        public String getUrl() {
+            return url;
+        }
+
+        public void setUrl(String url) {
+            this.url = url;
+        }
+
+        public Duration getHeartbeatInterval() {
+            return heartbeatInterval;
+        }
+
+        public void setHeartbeatInterval(Duration heartbeatInterval) {
+            this.heartbeatInterval = heartbeatInterval;
+        }
+    }
+
+    /** How this instance describes itself to the admin app. Defaults suit most deployments. */
+    public static class Instance {
+
+        /** Unique ID for this running instance. Defaults to a random UUID per start. */
+        private String id;
+
+        /** Host the admin app should call. Defaults to this machine's IP address. */
+        private String host;
+
+        /** Port the admin app should call. Defaults to the port the embedded web server started on. */
+        private Integer port;
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public String getHost() {
+            return host;
+        }
+
+        public void setHost(String host) {
+            this.host = host;
+        }
+
+        public Integer getPort() {
+            return port;
+        }
+
+        public void setPort(Integer port) {
+            this.port = port;
+        }
     }
 
     public static class Mongo {
