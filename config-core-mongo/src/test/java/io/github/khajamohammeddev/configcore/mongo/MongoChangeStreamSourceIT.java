@@ -140,6 +140,20 @@ class MongoChangeStreamSourceIT {
     }
 
     @Test
+    void writerChangesReachTheCacheAndKeepOtherFields() {
+        collection.insertOne(entry("feature.x.enabled", "false").append("description", "kept"));
+        source.start(cache);
+        MongoConfigWriter writer = new MongoConfigWriter(collection);
+
+        writer.put("feature.x.enabled", "true");
+        writer.put("brand.new", "1");
+
+        awaitCache().until(cache::getAll, Map.of("feature.x.enabled", "true", "brand.new", "1")::equals);
+        assertThat(collection.find(eq("_id", "feature.x.enabled")).first())
+                .containsEntry("description", "kept");
+    }
+
+    @Test
     void cannotStartTwice() {
         source.start(cache);
 
