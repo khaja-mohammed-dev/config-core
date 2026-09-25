@@ -60,6 +60,27 @@ class Checkout {
 
 config-core uses its own connection and does not replace your application's `MongoClient` bean.
 
+### Connecting to config-admin (optional)
+
+```yaml
+spring.application.name: orders
+config-core:
+  team: team-a
+  internal:
+    secret: ${CONFIG_CORE_SECRET}      # at least 16 chars; e.g. `openssl rand -hex 32`
+  admin:
+    url: https://config-admin.internal
+    heartbeat-interval: 15s            # default
+```
+
+- **`internal.secret`** enables `POST /internal/config/update` (`{"key": "...", "value": "..."}`), through which the
+  admin app changes config using *this service's* database credentials. Callers must send the secret in the
+  `X-Config-Core-Secret` header. Without a secret the endpoint does not exist. Serve it over HTTPS only.
+- **`admin.url`** makes the instance register with the admin app on startup, send heartbeats, and deregister on
+  shutdown. If the admin app is down or unreachable the service still starts and keeps retrying in the background.
+- If your app uses **Spring Security**, permit `/internal/config/**` and exclude it from CSRF protection; the shared
+  secret is what authenticates these calls.
+
 ## Local development
 
 Requirements: JDK 17+, Maven 3.9+, Docker.

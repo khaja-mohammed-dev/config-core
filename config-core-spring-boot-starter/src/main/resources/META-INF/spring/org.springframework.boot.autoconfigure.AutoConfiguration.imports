@@ -1,1 +1,3 @@
 io.github.khajamohammeddev.configcore.spring.ConfigCoreAutoConfiguration
+io.github.khajamohammeddev.configcore.spring.ConfigCoreEndpointAutoConfiguration
+io.github.khajamohammeddev.configcore.spring.ConfigCoreAdminAutoConfiguration

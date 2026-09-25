@@ -23,6 +23,13 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-autoconfigure</artifactId>
         </dependency>
+        <!-- Optional: the internal endpoint (Spring MVC) and admin registration (RestClient) only activate
+             in apps that already have them on the classpath -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webmvc</artifactId>
+            <optional>true</optional>
+        </dependency>
         <!-- Generates META-INF/spring-configuration-metadata.json so IDEs autocomplete config-core.* properties -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -39,6 +46,16 @@
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
