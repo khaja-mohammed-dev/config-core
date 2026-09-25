@@ -26,6 +26,7 @@ A/B experimentation (see Unleash or LaunchDarkly).
 | `config-core-api` | Storage-agnostic contracts + in-memory cache |
 | `config-core-mongo` | MongoDB Change Streams backend |
 | `config-core-spring-boot-starter` | Spring Boot auto-configuration: `ConfigService` bean + `ConfigChangedEvent` |
+| `config-admin` | Central admin app (deployed once, not a library): service registry + dashboard |
 
 ## Usage (Spring Boot)
 
@@ -79,6 +80,7 @@ config-core:
   - `POST /internal/config/update` with `{"key": "...", "value": "...", "changedBy": "alice", "comment": "optional"}`
     returns the recorded history entry (200), or 204 if the value was already set.
   - `GET /internal/config/history?key=...&limit=50` returns that key's changes, newest first.
+  - `GET /internal/config` returns every value as this instance currently sees it.
 - **`admin.url`** makes the instance register with the admin app on startup, send heartbeats, and deregister on
   shutdown. If the admin app is down or unreachable the service still starts and keeps retrying in the background.
 - **History:** every change made through config-core is appended to `<collection>_history` (key, version, old and
@@ -87,6 +89,27 @@ config-core:
   still reach every cache but are not recorded.
 - If your app uses **Spring Security**, permit `/internal/config/**` and exclude it from CSRF protection; the shared
   secret is what authenticates these calls.
+
+## config-admin
+
+A separate Spring Boot app, deployed once, that services register with (`config-core.admin.url`). It shows every
+registered service, its live instances (up/down from heartbeats), its current config and each key's change history.
+
+```bash
+java -jar config-admin/target/config-admin-*.jar      # http://localhost:8090
+```
+
+```yaml
+config-admin:
+  service-secrets:
+    orders: ${ORDERS_CONFIG_SECRET}   # must match that service's config-core.internal.secret
+  # default-service-secret: ...       # for services not listed above
+  lease-duration: 45s                 # shown as down after this long without a heartbeat
+  evict-after: 10m                    # removed from the registry after this long
+```
+
+> **Read-only and unauthenticated for now.** Editing config arrives in Phase 5B, login and team-based access
+> control in Phase 6. Until then, run it only on a trusted network.
 
 ## Local development
 

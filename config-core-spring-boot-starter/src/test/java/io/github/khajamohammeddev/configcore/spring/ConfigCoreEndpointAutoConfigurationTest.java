@@ -149,6 +149,16 @@ class ConfigCoreEndpointAutoConfigurationTest {
     }
 
     @Test
+    void currentReturnsThisInstancesValuesSorted() {
+        runWithEndpoint((mvc, writer) -> {
+            expect(mvc, get("/internal/config"), status().isUnauthorized());
+            mvc.perform(authorized(get("/internal/config")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.a").value("1")); // FakeSource's snapshot
+        });
+    }
+
+    @Test
     void historyValidatesParameters() {
         runWithEndpoint((mvc, writer) -> {
             expect(mvc, authorized(get("/internal/config/history")), status().isBadRequest());

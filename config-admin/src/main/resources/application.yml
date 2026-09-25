@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: config-admin
+
+server:
+  port: 8090
+
+config-admin:
+  lease-duration: 45s
+  evict-after: 10m
+  request-timeout: 5s
+  # Each service's config-core.internal.secret, so the admin app can read its config:
+  # service-secrets:
+  #   orders: ${ORDERS_CONFIG_SECRET}
+  # default-service-secret: ${CONFIG_CORE_SECRET}

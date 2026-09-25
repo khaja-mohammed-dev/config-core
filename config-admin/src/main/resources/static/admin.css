@@ -1,0 +1,96 @@
+:root {
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --text: #1f2328;
+    --muted: #656d76;
+    --border: #d0d7de;
+    --link: #0969da;
+    --up: #1a7f37;
+    --down: #cf222e;
+    --partial: #9a6700;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0d1117;
+        --panel: #161b22;
+        --text: #e6edf3;
+        --muted: #8d96a0;
+        --border: #30363d;
+        --link: #4493f8;
+        --up: #3fb950;
+        --down: #f85149;
+        --partial: #d29922;
+    }
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+}
+
+.brand { font-weight: 600; color: var(--text); text-decoration: none; }
+
+.badge {
+    font-size: 12px;
+    padding: 1px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+}
+
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+
+h1 { font-size: 24px; margin: 0 0 16px; }
+h2 { font-size: 18px; margin: 32px 0 12px; }
+
+a { color: var(--link); }
+
+.crumbs, .meta, .empty { color: var(--muted); }
+.crumbs { margin: 0 0 4px; }
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+/* On narrow screens, scroll wide tables sideways instead of the whole page */
+@media (max-width: 720px) {
+    table { display: block; overflow-x: auto; }
+}
+
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-size: 13px; color: var(--muted); font-weight: 600; }
+tbody tr:last-child td { border-bottom: none; }
+
+code, .value { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; }
+.value { word-break: break-all; }
+
+.status { font-weight: 600; }
+.status.up { color: var(--up); }
+.status.down { color: var(--down); }
+.status.partial { color: var(--partial); }
+
+.error {
+    padding: 10px 12px;
+    border: 1px solid var(--down);
+    border-radius: 6px;
+    color: var(--down);
+    background: var(--panel);
+}
