@@ -7,6 +7,8 @@ import io.github.khajamohammeddev.configcore.api.ConfigWriter;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -35,14 +37,26 @@ class InternalConfigController {
 
     private static final Logger log = LoggerFactory.getLogger(InternalConfigController.class);
 
+    private final ConfigService config;
     private final ConfigWriter writer;
     private final ConfigHistory history;
     private final byte[] secret;
 
-    InternalConfigController(ConfigWriter writer, ConfigHistory history, String secret) {
+    InternalConfigController(ConfigService config, ConfigWriter writer, ConfigHistory history, String secret) {
+        this.config = config;
         this.writer = writer;
         this.history = history;
         this.secret = secret.getBytes(StandardCharsets.UTF_8);
+    }
+
+    /** Every config value as this instance currently sees it, sorted by key. */
+    @GetMapping
+    ResponseEntity<Map<String, String>> current(
+            @RequestHeader(name = SECRET_HEADER, required = false) String providedSecret) {
+        if (!secretMatches(providedSecret)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        return ResponseEntity.ok(new TreeMap<>(config.getAll()));
     }
 
     /**

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{layout :: head(${key} + ' history')}"></head>
+<body>
+<header th:replace="~{layout :: header}"></header>
+<main>
+    <p class="crumbs">
+        <a th:href="@{/}">Services</a> /
+        <a th:href="@{/services/{name}(name=${service.serviceName()})}" th:text="${service.serviceName()}">orders</a> /
+    </p>
+    <h1><code th:text="${key}">feature.x.enabled</code></h1>
+
+    <p class="error" th:if="${historyError}" th:text="${historyError}">Could not reach any instance.</p>
+    <th:block th:if="${entries}">
+        <p class="empty" th:if="${entries.isEmpty()}">
+            No recorded changes. Changes made directly in the database are not recorded in history.
+        </p>
+        <table th:unless="${entries.isEmpty()}">
+            <thead>
+            <tr><th>Version</th><th>When</th><th>By</th><th>Old value</th><th>New value</th><th>Comment</th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="e : ${entries}">
+                <td th:text="'v' + ${e.version()}">v2</td>
+                <td th:text="${@time.timestamp(e.changedAt())}">2026-09-25 10:00:00 UTC</td>
+                <td th:text="${e.changedBy()}">alice</td>
+                <td class="value" th:text="${e.oldValue() ?: '(created)'}">false</td>
+                <td class="value" th:text="${e.newValue()}">true</td>
+                <td th:text="${e.comment() ?: ''}">launch</td>
+            </tr>
+            </tbody>
+        </table>
+    </th:block>
+</main>
+</body>
+</html>

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{layout :: head(${service.serviceName()})}"></head>
+<body>
+<header th:replace="~{layout :: header}"></header>
+<main>
+    <p class="crumbs"><a th:href="@{/}">Services</a> /</p>
+    <h1 th:text="${service.serviceName()}">orders</h1>
+    <p class="meta" th:if="${service.team()}">Team: <span th:text="${service.team()}">team-a</span></p>
+
+    <h2>Instances</h2>
+    <table>
+        <thead>
+        <tr><th>Status</th><th>Instance</th><th>Address</th><th>Last heartbeat</th><th>Registered</th></tr>
+        </thead>
+        <tbody>
+        <tr th:each="i : ${service.instances()}">
+            <td><span th:class="${i.up() ? 'status up' : 'status down'}" th:text="${i.up() ? 'UP' : 'DOWN'}">UP</span></td>
+            <td><code th:text="${i.instanceId()}">orders-1</code></td>
+            <td th:text="${i.baseUrl() ?: 'no port reported'}">http://10.0.0.5:8080</td>
+            <td th:text="${@time.ago(i.lastHeartbeat())}">5s ago</td>
+            <td th:text="${@time.timestamp(i.registeredAt())}">2026-09-25 10:00:00 UTC</td>
+        </tr>
+        </tbody>
+    </table>
+
+    <h2>Current config</h2>
+    <p class="error" th:if="${configError}" th:text="${configError}">Could not reach any instance.</p>
+    <th:block th:if="${config}">
+        <p class="empty" th:if="${config.isEmpty()}">This service has no config entries.</p>
+        <table th:unless="${config.isEmpty()}">
+            <thead>
+            <tr><th>Key</th><th>Value</th><th></th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="entry : ${config}">
+                <td><code th:text="${entry.key}">feature.x.enabled</code></td>
+                <td class="value" th:text="${entry.value}">true</td>
+                <td><a th:href="@{/services/{name}/history(name=${service.serviceName()}, key=${entry.key})}">History</a></td>
+            </tr>
+            </tbody>
+        </table>
+    </th:block>
+</main>
+</body>
+</html>
