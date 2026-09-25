@@ -39,6 +39,7 @@
     <modules>
         <module>config-core-api</module>
         <module>config-core-mongo</module>
+        <module>config-core-spring-boot-starter</module>
         <!-- config-core-postgres will be added here in v2 -->
     </modules>
 
@@ -75,6 +76,11 @@
             <dependency>
                 <groupId>${project.groupId}</groupId>
                 <artifactId>config-core-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>config-core-mongo</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

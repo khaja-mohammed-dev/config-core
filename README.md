@@ -25,6 +25,40 @@ A/B experimentation (see Unleash or LaunchDarkly).
 |---|---|
 | `config-core-api` | Storage-agnostic contracts + in-memory cache |
 | `config-core-mongo` | MongoDB Change Streams backend |
+| `config-core-spring-boot-starter` | Spring Boot auto-configuration: `ConfigService` bean + `ConfigChangedEvent` |
+
+## Usage (Spring Boot)
+
+Add `config-core-spring-boot-starter` to your dependencies, then point it at a MongoDB replica set:
+
+```yaml
+config-core:
+  mongo:
+    uri: mongodb://localhost:27017/mydb?replicaSet=rs0
+    collection: config        # optional, defaults to "config"
+```
+
+Store one document per key: `{ "_id": "feature.x.enabled", "value": true }`.
+
+```java
+@Service
+class Checkout {
+    private final ConfigService config;
+
+    Checkout(ConfigService config) { this.config = config; }
+
+    void run() {
+        if (config.getBoolean("feature.x.enabled", false)) { /* ... */ }
+    }
+
+    @EventListener
+    void onChange(ConfigChangedEvent e) {
+        // e.key(), e.oldValue(), e.newValue(), fired within ~1s of the change in Mongo
+    }
+}
+```
+
+config-core uses its own connection and does not replace your application's `MongoClient` bean.
 
 ## Local development
 
