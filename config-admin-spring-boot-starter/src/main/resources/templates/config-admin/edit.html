@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{config-admin/layout :: head(${form.key() ?: 'New entry'} + ' · ' + ${service.serviceName()})}"></head>
+<body>
+<header th:replace="~{config-admin/layout :: header}"></header>
+<main>
+    <p class="crumbs">
+        <a th:href="@{__${configAdminBase}__/}">Services</a> /
+        <a th:href="@{__${configAdminBase}__/services/{name}(name=${service.serviceName()})}" th:text="${service.serviceName()}">orders</a> /
+    </p>
+
+    <th:block th:unless="${review}">
+        <h1 th:text="${current != null ? 'Edit entry' : 'New entry'}">Edit entry</h1>
+        <p class="error" th:each="e : ${errors}" th:text="${e}">Key is required.</p>
+
+        <form class="edit" method="post" th:action="@{__${configAdminBase}__/services/{name}/edit/review(name=${service.serviceName()})}">
+            <label>Key
+                <input name="key" th:value="${form.key()}" th:readonly="${current != null}" required
+                       autocomplete="off" spellcheck="false">
+            </label>
+            <p class="meta" th:if="${current != null}">
+                Current value: <code class="value" th:text="${current}">false</code>
+            </p>
+            <label>Value
+                <textarea name="value" rows="4" spellcheck="false" th:text="${form.value()}">true</textarea>
+            </label>
+            <label>Your name
+                <input name="changedBy" th:value="${form.changedBy()}" required autocomplete="name">
+            </label>
+            <label>Comment <span class="meta">(optional, recorded in the history)</span>
+                <input name="comment" th:value="${form.comment()}" autocomplete="off">
+            </label>
+            <div class="actions">
+                <button type="submit" class="primary">Review change</button>
+                <a th:href="@{__${configAdminBase}__/services/{name}(name=${service.serviceName()})}">Cancel</a>
+            </div>
+        </form>
+    </th:block>
+
+    <th:block th:if="${review}">
+        <h1>Confirm change</h1>
+        <p>This change applies to every instance of
+            <strong th:text="${service.serviceName()}">orders</strong> within about a second.</p>
+
+        <table class="review">
+            <tbody>
+            <tr><th>Key</th><td><code th:text="${form.key()}">feature.x.enabled</code></td></tr>
+            <tr><th>Current value</th>
+                <td class="value" th:if="${current != null}" th:text="${current}">false</td>
+                <td class="meta" th:if="${current == null}">(not set: this creates the key)</td></tr>
+            <tr><th>New value</th><td class="value new" th:text="${form.value()}">true</td></tr>
+            <tr><th>Changed by</th><td th:text="${form.changedBy()}">alice</td></tr>
+            <tr><th>Comment</th><td th:text="${form.comment() ?: '—'}">launch</td></tr>
+            </tbody>
+        </table>
+
+        <form class="edit" method="post" th:action="@{__${configAdminBase}__/services/{name}/update(name=${service.serviceName()})}">
+            <input type="hidden" name="key" th:value="${form.key()}">
+            <input type="hidden" name="value" th:value="${form.value()}">
+            <input type="hidden" name="changedBy" th:value="${form.changedBy()}">
+            <input type="hidden" name="comment" th:value="${form.comment()}">
+            <div class="actions">
+                <button type="submit" class="primary">Apply change</button>
+                <button type="submit" formmethod="get"
+                        th:formaction="@{__${configAdminBase}__/services/{name}/edit(name=${service.serviceName()})}">Back</button>
+            </div>
+        </form>
+    </th:block>
+</main>
+</body>
+</html>
