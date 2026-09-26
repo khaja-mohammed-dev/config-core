@@ -25,8 +25,13 @@ A/B experimentation (see Unleash or LaunchDarkly).
 |---|---|
 | `config-core-api` | Storage-agnostic contracts + in-memory cache |
 | `config-core-mongo` | MongoDB Change Streams backend |
-| `config-core-spring-boot-starter` | Spring Boot auto-configuration: `ConfigService` bean + `ConfigChangedEvent` |
-| `config-admin` | Central admin app (deployed once, not a library): service registry + dashboard |
+| `config-core-spring-boot-starter` | **Client**: add to each service. `ConfigService` bean, `ConfigChangedEvent`, internal endpoints, registration with the admin server |
+| `config-admin-spring-boot-starter` | **Server**: add to one Spring Boot app, plus `@EnableConfigAdminServer`. Service registry + dashboard |
+| `config-admin-server` | A ready-to-run admin server built from the server starter (`java -jar`) |
+
+Like Eureka, there is a client starter and a server starter. Every service adds the client; one app, deployed once,
+adds the server. Config changes do not travel through the admin server: it asks a service to write the change, and
+MongoDB change streams push it to every instance.
 
 ## Usage (Spring Boot)
 
@@ -94,11 +99,36 @@ config-core:
 - If your app uses **Spring Security**, permit `/internal/config/**` and exclude it from CSRF protection; the shared
   secret is what authenticates these calls.
 
-## config-admin
+## config-admin server
 
-A separate Spring Boot app, deployed once, that services register with (`config-core.admin.url`). It shows every
-registered service, its live instances (up/down from heartbeats), its current config and each key's change history,
-and lets you add, edit, delete and restore entries.
+The admin server is the app services register with (`config-core.admin.url`). It shows every registered service, its
+live instances (up/down from heartbeats), its current config and each key's change history, and lets you add, edit,
+delete and restore entries. Deploy one per environment.
+
+Turn any Spring Boot web app into the admin server, the way `@EnableEurekaServer` does:
+
+```xml
+<dependency>
+    <groupId>io.github.khaja-mohammed-dev</groupId>
+    <artifactId>config-admin-spring-boot-starter</artifactId>
+</dependency>
+```
+
+```java
+@SpringBootApplication
+@EnableConfigAdminServer
+public class ConfigAdminApp {
+    public static void main(String[] args) {
+        SpringApplication.run(ConfigAdminApp.class, args);
+    }
+}
+```
+
+The dependency alone activates nothing; the annotation does. Or skip writing the app and run the ready-made one:
+
+```bash
+java -jar config-admin-server/target/config-admin-server-*.jar      # http://localhost:8090
+```
 
 Every change takes two steps: an edit is reviewed against the current value before it is applied, and a delete is
 confirmed on its own page. The admin app never touches a service's database. It sends the change to any healthy
@@ -107,10 +137,6 @@ second. Failures (no instance reachable, secret rejected, request invalid) are s
 received the change but did not confirm it (a timeout or server error), the admin app does not retry on another
 instance. It tells you to check the key's history first, because the change may already have been applied.
 
-```bash
-java -jar config-admin/target/config-admin-*.jar      # http://localhost:8090
-```
-
 ```yaml
 config-admin:
   service-secrets:
@@ -118,7 +144,14 @@ config-admin:
   # default-service-secret: ...       # for services not listed above
   lease-duration: 45s                 # shown as down after this long without a heartbeat
   evict-after: 10m                    # removed from the registry after this long
+  dashboard:
+    path: /                           # e.g. /config-admin if the app has pages of its own
+
+server.servlet.session.tracking-modes: cookie   # recommended: keeps session ids out of URLs
 ```
+
+The registration API is always at `/api/instances`, whatever the dashboard path. The dashboard's templates and CSS
+live under `config-admin/`, so they do not clash with the host app's own.
 
 > **No login yet, and it can change live config.** Anyone who can reach the admin app can edit any registered
 > service, and "changed by" is whatever they type. Login, team-based access control and CSRF protection arrive in

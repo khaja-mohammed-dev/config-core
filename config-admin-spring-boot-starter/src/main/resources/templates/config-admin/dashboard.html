@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{config-admin/layout :: head('Services')}"></head>
+<body>
+<header th:replace="~{config-admin/layout :: header}"></header>
+<main>
+    <h1>Services</h1>
+
+    <p class="empty" th:if="${services.isEmpty()}">
+        No services registered yet. Set <code>config-core.admin.url</code> on a service to point at this app.
+    </p>
+
+    <table th:unless="${services.isEmpty()}">
+        <thead>
+        <tr><th>Service</th><th>Team</th><th>Instances up</th><th>Last heartbeat</th></tr>
+        </thead>
+        <tbody>
+        <tr th:each="s : ${services}">
+            <td><a th:href="@{__${configAdminBase}__/services/{name}(name=${s.serviceName()})}" th:text="${s.serviceName()}">orders</a></td>
+            <td th:text="${s.team() ?: '—'}">team-a</td>
+            <td>
+                <span th:class="${s.upCount() == 0 ? 'status down' : (s.upCount() < s.instances().size() ? 'status partial' : 'status up')}"
+                      th:text="${s.upCount()} + ' / ' + ${s.instances().size()}">2 / 2</span>
+            </td>
+            <td th:text="${@configAdminTime.ago(s.lastHeartbeat())}">5s ago</td>
+        </tr>
+        </tbody>
+    </table>
+</main>
+</body>
+</html>
