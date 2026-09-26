@@ -1,0 +1,36 @@
+package io.github.configstream.api;
+
+import java.util.Map;
+
+/**
+ * A backing store that can report its current config and push subsequent changes.
+ * Implemented once per database (MongoDB change streams, later Postgres LISTEN/NOTIFY, ...).
+ */
+public interface ConfigChangeSource extends AutoCloseable {
+
+    /** Reads the full current config from the store. Does not require {@link #start}. */
+    Map<String, String> loadInitial();
+
+    /**
+     * Starts watching the store. Implementations must:
+     * <ol>
+     *   <li>begin capturing changes <em>before</em> reading the initial state, so nothing written
+     *       during startup is lost;</li>
+     *   <li>deliver the initial state via {@link ConfigChangeListener#onSnapshot} before this
+     *       method returns;</li>
+     *   <li>then deliver every later change via {@link ConfigChangeListener#onChange} on a
+     *       background thread.</li>
+     * </ol>
+     *
+     * @throws IllegalStateException if already started
+     */
+    void start(ConfigChangeListener listener);
+
+    /** Stops watching and releases resources. Safe to call more than once. */
+    void stop();
+
+    @Override
+    default void close() {
+        stop();
+    }
+}

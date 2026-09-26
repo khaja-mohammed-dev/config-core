@@ -1,0 +1,3 @@
+io.github.configstream.spring.ConfigStreamAutoConfiguration
+io.github.configstream.spring.ConfigStreamEndpointAutoConfiguration
+io.github.configstream.spring.ConfigStreamAdminAutoConfiguration

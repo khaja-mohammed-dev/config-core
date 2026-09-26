@@ -4,15 +4,15 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <!-- Must match the namespace verified on Maven Central -->
-    <groupId>io.github.khaja-mohammed-dev</groupId>
-    <artifactId>config-core-parent</artifactId>
+    <!-- Must match the namespace verified on Maven Central (the configstream GitHub organisation) -->
+    <groupId>io.github.configstream</groupId>
+    <artifactId>configstream-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <name>config-core</name>
+    <name>configstream</name>
     <description>Push-based, restart-free feature flags and config for Spring Boot, using your database's native change notifications.</description>
-    <url>https://github.com/khaja-mohammed-dev/config-core</url>
+    <url>https://github.com/configstream/configstream</url>
 
     <licenses>
         <license>
@@ -31,18 +31,18 @@
     </developers>
 
     <scm>
-        <url>https://github.com/khaja-mohammed-dev/config-core</url>
-        <connection>scm:git:https://github.com/khaja-mohammed-dev/config-core.git</connection>
-        <developerConnection>scm:git:https://github.com/khaja-mohammed-dev/config-core.git</developerConnection>
+        <url>https://github.com/configstream/configstream</url>
+        <connection>scm:git:https://github.com/configstream/configstream.git</connection>
+        <developerConnection>scm:git:https://github.com/configstream/configstream.git</developerConnection>
     </scm>
 
     <modules>
-        <module>config-core-api</module>
-        <module>config-core-mongo</module>
-        <module>config-core-spring-boot-starter</module>
-        <!-- Admin server as a starter: add it to any Spring Boot app, plus @EnableConfigAdminServer -->
-        <module>config-admin-spring-boot-starter</module>
-        <!-- config-core-postgres will be added here in v2 -->
+        <module>configstream-api</module>
+        <module>configstream-mongo</module>
+        <module>configstream-spring-boot-starter</module>
+        <!-- Admin server as a starter: add it to any Spring Boot app, plus @EnableConfigStreamAdminServer -->
+        <module>configstream-admin-spring-boot-starter</module>
+        <!-- configstream-postgres will be added here in v2 -->
     </modules>
 
     <properties>
@@ -77,12 +77,12 @@
             </dependency>
             <dependency>
                 <groupId>${project.groupId}</groupId>
-                <artifactId>config-core-api</artifactId>
+                <artifactId>configstream-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>${project.groupId}</groupId>
-                <artifactId>config-core-mongo</artifactId>
+                <artifactId>configstream-mongo</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

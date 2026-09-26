@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:fragment="head(title)">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${title} + ' · configstream-admin'">configstream-admin</title>
+    <link rel="stylesheet" th:href="@{/configstream-admin/admin.css}">
+</head>
+<body>
+<header th:fragment="header">
+    <a class="brand" th:href="@{__${configStreamAdminBase}__/}">configstream-admin</a>
+    <span class="badge" title="Login and access control arrive in a later release">no login: trusted networks only</span>
+</header>
+</body>
+</html>

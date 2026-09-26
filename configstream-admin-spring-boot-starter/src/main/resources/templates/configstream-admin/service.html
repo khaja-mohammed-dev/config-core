@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{configstream-admin/layout :: head(${service.serviceName()})}"></head>
+<body>
+<header th:replace="~{configstream-admin/layout :: header}"></header>
+<main>
+    <p class="crumbs"><a th:href="@{__${configStreamAdminBase}__/}">Services</a> /</p>
+    <p class="notice" th:if="${notice}" th:text="${notice}">Updated 'limits.max' (v3).</p>
+    <h1 th:text="${service.serviceName()}">orders</h1>
+    <p class="meta" th:if="${service.team()}">Team: <span th:text="${service.team()}">team-a</span></p>
+
+    <h2>Instances</h2>
+    <table>
+        <thead>
+        <tr><th>Status</th><th>Instance</th><th>Address</th><th>Last heartbeat</th><th>Registered</th></tr>
+        </thead>
+        <tbody>
+        <tr th:each="i : ${service.instances()}">
+            <td><span th:class="${i.up() ? 'status up' : 'status down'}" th:text="${i.up() ? 'UP' : 'DOWN'}">UP</span></td>
+            <td><code th:text="${i.instanceId()}">orders-1</code></td>
+            <td th:text="${i.baseUrl() ?: 'no port reported'}">http://10.0.0.5:8080</td>
+            <td th:text="${@configStreamAdminTime.ago(i.lastHeartbeat())}">5s ago</td>
+            <td th:text="${@configStreamAdminTime.timestamp(i.registeredAt())}">2026-09-25 10:00:00 UTC</td>
+        </tr>
+        </tbody>
+    </table>
+
+    <div class="section-head">
+        <h2>Current config</h2>
+        <a class="button" th:if="${config}" th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()})}">Add entry</a>
+    </div>
+    <p class="error" th:if="${configError}" th:text="${configError}">Could not reach any instance.</p>
+    <th:block th:if="${config}">
+        <p class="empty" th:if="${config.isEmpty()}">This service has no config entries.</p>
+        <table th:unless="${config.isEmpty()}">
+            <thead>
+            <tr><th>Key</th><th>Value</th><th></th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="entry : ${config}">
+                <td><code th:text="${entry.key}">feature.x.enabled</code></td>
+                <td class="value" th:text="${entry.value}">true</td>
+                <td class="links">
+                    <a th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()}, key=${entry.key})}">Edit</a>
+                    <a th:href="@{__${configStreamAdminBase}__/services/{name}/history(name=${service.serviceName()}, key=${entry.key})}">History</a>
+                    <a class="danger-link" th:href="@{__${configStreamAdminBase}__/services/{name}/delete(name=${service.serviceName()}, key=${entry.key})}">Delete</a>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </th:block>
+</main>
+</body>
+</html>
