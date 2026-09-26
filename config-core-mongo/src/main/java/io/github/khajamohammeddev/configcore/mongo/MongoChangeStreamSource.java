@@ -26,7 +26,8 @@ import org.slf4j.LoggerFactory;
  * <p>Expected document shape, one document per key:
  * <pre>{ "_id": "feature.x.enabled", "value": "true" }</pre>
  * String, number and boolean values are exposed as strings; embedded documents as JSON.
- * Documents without a {@code value} field, or whose {@code _id} is not a string, are ignored.
+ * Documents without a {@code value} field, or whose {@code _id} is not a string, are ignored; removing
+ * the {@code value} field (which is how {@link MongoConfigWriter} deletes a key) is reported as a delete.
  *
  * <p><b>Startup race:</b> the change stream is opened <em>before</em> the initial snapshot is read.
  * Anything written while the snapshot loads is held by the open stream (MongoDB keeps it in the

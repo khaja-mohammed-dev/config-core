@@ -17,16 +17,23 @@
         </p>
         <table th:unless="${entries.isEmpty()}">
             <thead>
-            <tr><th>Version</th><th>When</th><th>By</th><th>Old value</th><th>New value</th><th>Comment</th></tr>
+            <tr><th>Version</th><th>When</th><th>By</th><th>Old value</th><th>New value</th><th>Comment</th><th></th></tr>
             </thead>
             <tbody>
-            <tr th:each="e : ${entries}">
+            <tr th:each="e, row : ${entries}">
                 <td th:text="'v' + ${e.version()}">v2</td>
                 <td th:text="${@time.timestamp(e.changedAt())}">2026-09-25 10:00:00 UTC</td>
                 <td th:text="${e.changedBy()}">alice</td>
                 <td class="value" th:text="${e.oldValue() ?: '(created)'}">false</td>
-                <td class="value" th:text="${e.newValue()}">true</td>
+                <td class="value" th:text="${e.newValue() ?: '(deleted)'}">true</td>
                 <td th:text="${e.comment() ?: ''}">launch</td>
+                <td class="links">
+                    <!--/* Restoring goes through the normal edit and review steps. The first row is the current value, unless it is a deletion */-->
+                    <a th:if="${!e.deleted() and !row.first}"
+                       th:href="@{/services/{name}/edit(name=${service.serviceName()}, key=${key}, value=${e.newValue()}, comment='Reverted to v' + ${e.version()})}">Restore</a>
+                    <a th:if="${e.deleted() and row.first}"
+                       th:href="@{/services/{name}/edit(name=${service.serviceName()}, key=${key}, value=${e.oldValue()}, comment='Restored after deletion in v' + ${e.version()})}">Restore</a>
+                </td>
             </tr>
             </tbody>
         </table>

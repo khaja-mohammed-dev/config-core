@@ -10,6 +10,7 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import io.github.khajamohammeddev.configcore.api.ConfigCache;
+import io.github.khajamohammeddev.configcore.api.ConfigDeletion;
 import io.github.khajamohammeddev.configcore.api.ConfigUpdate;
 import java.time.Duration;
 import java.util.List;
@@ -153,6 +154,19 @@ class MongoChangeStreamSourceIT {
         awaitCache().until(cache::getAll, Map.of("feature.x.enabled", "true", "brand.new", "1")::equals);
         assertThat(collection.find(eq("_id", "feature.x.enabled")).first())
                 .containsEntry("description", "kept");
+    }
+
+    @Test
+    void writerDeletesLeaveTheCacheAndStayDeletedAcrossReloads() {
+        collection.insertMany(List.of(entry("keep", "1"), entry("drop", "2")));
+        source.start(cache);
+        MongoConfigWriter writer = new MongoConfigWriter(client, collection,
+                new MongoConfigHistory(client.getDatabase("configcore").getCollection("history_" + UUID.randomUUID())));
+
+        writer.delete(new ConfigDeletion("drop", "tester", null));
+
+        awaitCache().until(cache::getAll, Map.of("keep", "1")::equals);
+        assertThat(source.loadInitial()).isEqualTo(Map.of("keep", "1"));
     }
 
     @Test

@@ -9,6 +9,7 @@ import com.mongodb.MongoWriteException;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
+import io.github.khajamohammeddev.configcore.api.ConfigDeletion;
 import io.github.khajamohammeddev.configcore.api.ConfigHistoryEntry;
 import io.github.khajamohammeddev.configcore.api.ConfigUpdate;
 import java.time.Instant;
@@ -151,6 +152,52 @@ class MongoConfigWriterIT {
 
         assertThat(history.history("a", 2)).extracting(ConfigHistoryEntry::newValue).containsExactly("v5", "v4");
         assertThat(history.history("missing", 10)).isEmpty();
+    }
+
+    @Test
+    void deleteRemovesTheValueAndRecordsIt() {
+        writer.write(new ConfigUpdate("a", "1", "alice", null));
+
+        Optional<ConfigHistoryEntry> entry = writer.delete(new ConfigDeletion("a", "bob", "retired"));
+
+        assertThat(entry).get().satisfies(e -> {
+            assertThat(e.version()).isEqualTo(2);
+            assertThat(e.oldValue()).isEqualTo("1");
+            assertThat(e.newValue()).isNull();
+            assertThat(e.deleted()).isTrue();
+            assertThat(e.changedBy()).isEqualTo("bob");
+            assertThat(e.comment()).isEqualTo("retired");
+        });
+        assertThat(history.history("a", 10)).first().isEqualTo(entry.get());
+        // Soft delete: the document and its version stay, only the value goes
+        assertThat(config.find(eq("_id", "a")).first())
+                .doesNotContainKey("value")
+                .containsEntry("version", 2L);
+    }
+
+    @Test
+    void deletingAMissingOrDeletedKeyRecordsNothing() {
+        assertThat(writer.delete(new ConfigDeletion("missing", "alice", null))).isEmpty();
+
+        writer.write(new ConfigUpdate("a", "1", "alice", null));
+        writer.delete(new ConfigDeletion("a", "alice", null));
+        assertThat(writer.delete(new ConfigDeletion("a", "alice", null))).isEmpty();
+        assertThat(history.history("a", 10)).hasSize(2);
+    }
+
+    @Test
+    void writingADeletedKeyAgainContinuesItsVersions() {
+        writer.write(new ConfigUpdate("a", "1", "alice", null));
+        writer.delete(new ConfigDeletion("a", "alice", null));
+
+        Optional<ConfigHistoryEntry> restored = writer.write(new ConfigUpdate("a", "1", "bob", "Restored v1"));
+
+        assertThat(restored).get().satisfies(e -> {
+            assertThat(e.version()).isEqualTo(3);
+            assertThat(e.oldValue()).as("recreated").isNull();
+            assertThat(e.newValue()).isEqualTo("1");
+        });
+        assertThat(config.find(eq("_id", "a")).first()).containsEntry("value", "1");
     }
 
     @Test

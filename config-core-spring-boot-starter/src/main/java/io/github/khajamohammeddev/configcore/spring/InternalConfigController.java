@@ -1,5 +1,6 @@
 package io.github.khajamohammeddev.configcore.spring;
 
+import io.github.khajamohammeddev.configcore.api.ConfigDeletion;
 import io.github.khajamohammeddev.configcore.api.ConfigHistory;
 import io.github.khajamohammeddev.configcore.api.ConfigHistoryEntry;
 import io.github.khajamohammeddev.configcore.api.ConfigUpdate;
@@ -85,6 +86,30 @@ class InternalConfigController {
                 .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
+    /**
+     * Soft-deletes the key: it leaves every cache but keeps its history. Returns 200 with the recorded
+     * {@link ConfigHistoryEntry}, or 204 if the key has no value (never existed or already deleted).
+     * To restore it, write a value again.
+     */
+    @PostMapping("/delete")
+    ResponseEntity<ConfigHistoryEntry> delete(
+            @RequestHeader(name = SECRET_HEADER, required = false) String providedSecret,
+            @RequestBody(required = false) DeleteRequest request) {
+        if (!secretMatches(providedSecret)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (request == null || isBlank(request.key()) || isBlank(request.changedBy())) {
+            return ResponseEntity.badRequest().build();
+        }
+        return writer.delete(new ConfigDeletion(request.key(), request.changedBy(), request.comment()))
+                .map(entry -> {
+                    log.info("Config '{}' deleted (v{}) by {} via internal endpoint",
+                            entry.key(), entry.version(), entry.changedBy());
+                    return ResponseEntity.ok(entry);
+                })
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
     /** Changes to one key, newest first. {@code limit} defaults to 50 and is capped at 500. */
     @GetMapping("/history")
     ResponseEntity<List<ConfigHistoryEntry>> history(
@@ -112,5 +137,8 @@ class InternalConfigController {
 
     /** {@code changedBy} is the admin app's authenticated user; {@code comment} is optional. */
     record UpdateRequest(String key, String value, String changedBy, String comment) {
+    }
+
+    record DeleteRequest(String key, String changedBy, String comment) {
     }
 }

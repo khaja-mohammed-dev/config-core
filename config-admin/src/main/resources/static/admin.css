@@ -87,10 +87,48 @@ code, .value { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; f
 .status.down { color: var(--down); }
 .status.partial { color: var(--partial); }
 
-.error {
+.error, .notice {
     padding: 10px 12px;
     border: 1px solid var(--down);
     border-radius: 6px;
     color: var(--down);
     background: var(--panel);
 }
+.notice { border-color: var(--up); color: var(--up); }
+
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.links { white-space: nowrap; }
+.links a + a { margin-left: 10px; }
+.danger-link { color: var(--down); }
+
+table.review { width: auto; min-width: 50%; margin-bottom: 16px; }
+table.review th { width: 140px; }
+.value.new { font-weight: 600; }
+
+form.edit { display: grid; gap: 14px; max-width: 640px; }
+form.edit label { display: grid; gap: 4px; font-weight: 600; }
+form.edit label .meta { font-weight: 400; }
+input, textarea {
+    font: inherit;
+    padding: 6px 8px;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+textarea { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; resize: vertical; }
+input[readonly] { color: var(--muted); }
+
+.actions { display: flex; align-items: center; gap: 12px; }
+button, .button {
+    font: inherit;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--text);
+    cursor: pointer;
+    text-decoration: none;
+}
+button.primary { background: var(--link); border-color: var(--link); color: #fff; }
+button.danger { background: var(--down); border-color: var(--down); color: #fff; }

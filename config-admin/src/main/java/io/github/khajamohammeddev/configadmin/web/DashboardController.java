@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Read-only UI: services, their instances, current config and per-key history. */
+/** Read side of the UI: services, their instances, current config and per-key history. */
 @Controller
 class DashboardController {
 
