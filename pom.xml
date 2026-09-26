@@ -42,8 +42,6 @@
         <module>config-core-spring-boot-starter</module>
         <!-- Admin server as a starter: add it to any Spring Boot app, plus @EnableConfigAdminServer -->
         <module>config-admin-spring-boot-starter</module>
-        <!-- Ready-to-run admin app built from the starter (java -jar) -->
-        <module>config-admin-server</module>
         <!-- config-core-postgres will be added here in v2 -->
     </modules>
 

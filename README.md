@@ -27,7 +27,6 @@ A/B experimentation (see Unleash or LaunchDarkly).
 | `config-core-mongo` | MongoDB Change Streams backend |
 | `config-core-spring-boot-starter` | **Client**: add to each service. `ConfigService` bean, `ConfigChangedEvent`, internal endpoints, registration with the admin server |
 | `config-admin-spring-boot-starter` | **Server**: add to one Spring Boot app, plus `@EnableConfigAdminServer`. Service registry + dashboard |
-| `config-admin-server` | A ready-to-run admin server built from the server starter (`java -jar`) |
 
 Like Eureka, there is a client starter and a server starter. Every service adds the client; one app, deployed once,
 adds the server. Config changes do not travel through the admin server: it asks a service to write the change, and
@@ -124,11 +123,8 @@ public class ConfigAdminApp {
 }
 ```
 
-The dependency alone activates nothing; the annotation does. Or skip writing the app and run the ready-made one:
-
-```bash
-java -jar config-admin-server/target/config-admin-server-*.jar      # http://localhost:8090
-```
+The dependency alone activates nothing; the annotation does. There is no separate admin jar to download: the admin
+server is always your own Spring Boot app, deployed and configured like any other.
 
 Every change takes two steps: an edit is reviewed against the current value before it is applied, and a delete is
 confirmed on its own page. The admin app never touches a service's database. It sends the change to any healthy
