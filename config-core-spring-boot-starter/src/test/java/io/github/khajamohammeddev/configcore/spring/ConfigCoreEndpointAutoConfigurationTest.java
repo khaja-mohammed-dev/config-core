@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.khajamohammeddev.configcore.api.ConfigDeletion;
 import io.github.khajamohammeddev.configcore.api.ConfigHistory;
 import io.github.khajamohammeddev.configcore.api.ConfigHistoryEntry;
 import io.github.khajamohammeddev.configcore.api.ConfigUpdate;
@@ -128,6 +129,38 @@ class ConfigCoreEndpointAutoConfigurationTest {
     }
 
     @Test
+    void deletesWithValidSecretAndReturnsTheHistoryEntry() {
+        runWithEndpoint((mvc, writer) -> {
+            writer.write(new ConfigUpdate("a", "1", "alice", null));
+            String body = "{\"key\":\"a\",\"changedBy\":\"bob\",\"comment\":\"retired\"}";
+
+            expect(mvc, delete(body), status().isUnauthorized());
+            mvc.perform(authorized(delete(body)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.key").value("a"))
+                    .andExpect(jsonPath("$.version").value(2))
+                    .andExpect(jsonPath("$.oldValue").value("1"))
+                    .andExpect(jsonPath("$.newValue").doesNotExist())
+                    .andExpect(jsonPath("$.changedBy").value("bob"))
+                    .andExpect(jsonPath("$.comment").value("retired"));
+            assertThat(writer.written).isEmpty();
+
+            expect(mvc, authorized(delete(body)), status().isNoContent()); // already deleted
+        });
+    }
+
+    @Test
+    void rejectsIncompleteDeletes() {
+        runWithEndpoint((mvc, writer) -> {
+            writer.write(new ConfigUpdate("a", "1", "alice", null));
+            expect(mvc, authorized(delete("{\"key\":\"a\"}")), status().isBadRequest());
+            expect(mvc, authorized(delete("{\"key\":\" \",\"changedBy\":\"alice\"}")), status().isBadRequest());
+            expect(mvc, authorized(post("/internal/config/delete")), status().isBadRequest());
+            assertThat(writer.written).containsKey("a");
+        });
+    }
+
+    @Test
     void historyReturnsNewestFirstWithLimit() {
         runWithEndpoint((mvc, writer) -> {
             for (int i = 1; i <= 3; i++) {
@@ -179,6 +212,10 @@ class ConfigCoreEndpointAutoConfigurationTest {
         return post("/internal/config/update").contentType(MediaType.APPLICATION_JSON).content(json);
     }
 
+    private static MockHttpServletRequestBuilder delete(String json) {
+        return post("/internal/config/delete").contentType(MediaType.APPLICATION_JSON).content(json);
+    }
+
     private static MockHttpServletRequestBuilder authorized(MockHttpServletRequestBuilder request) {
         return request.header(InternalConfigController.SECRET_HEADER, SECRET);
     }
@@ -210,11 +247,24 @@ class ConfigCoreEndpointAutoConfigurationTest {
             if (update.value().equals(old)) {
                 return Optional.empty();
             }
-            long version = entries.stream().filter(e -> e.key().equals(update.key())).count() + 1;
-            ConfigHistoryEntry entry = new ConfigHistoryEntry(update.key(), version, old, update.value(),
-                    update.changedBy(), Instant.parse("2026-09-25T10:00:00Z"), update.comment());
+            return Optional.of(record(update.key(), old, update.value(), update.changedBy(), update.comment()));
+        }
+
+        @Override
+        public synchronized Optional<ConfigHistoryEntry> delete(ConfigDeletion deletion) {
+            String old = written.remove(deletion.key());
+            if (old == null) {
+                return Optional.empty();
+            }
+            return Optional.of(record(deletion.key(), old, null, deletion.changedBy(), deletion.comment()));
+        }
+
+        private ConfigHistoryEntry record(String key, String oldValue, String newValue, String changedBy, String comment) {
+            long version = entries.stream().filter(e -> e.key().equals(key)).count() + 1;
+            ConfigHistoryEntry entry = new ConfigHistoryEntry(key, version, oldValue, newValue, changedBy,
+                    Instant.parse("2026-09-25T10:00:00Z"), comment);
             entries.add(0, entry);
-            return Optional.of(entry);
+            return entry;
         }
 
         @Override

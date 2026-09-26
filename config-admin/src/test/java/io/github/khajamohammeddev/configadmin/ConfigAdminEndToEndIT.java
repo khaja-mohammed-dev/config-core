@@ -9,10 +9,15 @@ import io.github.khajamohammeddev.configadmin.registry.InstanceRegistry;
 import io.github.khajamohammeddev.demoservice.DemoServiceApplication;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.bson.Document;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -24,8 +29,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * The Phase 5A goal end to end: a real config-core service registers with a real config-admin, and
- * the admin UI shows its live instance, current config and change history.
+ * Real config-core services registering with a real config-admin, against a real MongoDB: the admin
+ * UI shows their live instances, config and history, and changes made in the UI reach every instance.
  */
 @Testcontainers
 class ConfigAdminEndToEndIT {
@@ -47,7 +52,7 @@ class ConfigAdminEndToEndIT {
                 "--server.port=0",
                 "--config-core.enabled=false",
                 NO_MONGO_AUTOCONFIG,
-                "--config-admin.service-secrets.orders=" + SECRET);
+                "--config-admin.default-service-secret=" + SECRET);
         adminUrl = "http://localhost:" + admin.getEnvironment().getProperty("local.server.port");
     }
 
@@ -80,16 +85,67 @@ class ConfigAdminEndToEndIT {
 
         // A clean shutdown deregisters the instance
         assertThat(registry.service("orders")).isEmpty();
-        assertThat(getHtml(adminUrl + "/")).contains("No services registered yet");
+        assertThat(getHtml(adminUrl + "/")).doesNotContain("href=\"/services/orders\"");
+    }
+
+    /**
+     * The Phase 5B goal: a change made in the admin UI is written by the service, reaches every
+     * instance's cache through the change stream, and shows up in the UI's history. Same for deletes.
+     */
+    @Test
+    void changesMadeInTheAdminUiReachEveryInstanceAndTheHistory() throws Exception {
+        InstanceRegistry registry = admin.getBean(InstanceRegistry.class);
+
+        try (ConfigurableApplicationContext first = startService("payments");
+             ConfigurableApplicationContext second = startService("payments")) {
+            await().atMost(Duration.ofSeconds(10))
+                    .until(() -> registry.service("payments").map(s -> s.upCount() == 2).orElse(false));
+            List<String> instanceUrls = List.of(urlOf(first), urlOf(second));
+
+            // Review first: nothing is written until the change is applied
+            assertThat(postForm("/services/payments/edit/review", Map.of(
+                    "key", "limits.max", "value", "75", "changedBy", "carol", "comment", "more traffic")))
+                    .satisfies(r -> assertThat(r.statusCode()).isEqualTo(200))
+                    .satisfies(r -> assertThat(r.body()).contains("Confirm change", "this creates the key"));
+
+            HttpResponse<String> applied = postForm("/services/payments/update", Map.of(
+                    "key", "limits.max", "value", "75", "changedBy", "carol", "comment", "more traffic"));
+            assertThat(applied.statusCode()).isEqualTo(302);
+            assertThat(applied.headers().firstValue("Location")).get().asString().endsWith("/services/payments");
+
+            await().atMost(Duration.ofSeconds(2)).untilAsserted(() -> {
+                for (String url : instanceUrls) {
+                    assertThat(currentConfigOf(url)).contains("\"limits.max\":\"75\"");
+                }
+            });
+            assertThat(getHtml(adminUrl + "/services/payments/history?key=limits.max"))
+                    .contains("v1", "carol", "(created)", "more traffic");
+
+            HttpResponse<String> deleted = postForm("/services/payments/delete", Map.of(
+                    "key", "limits.max", "changedBy", "dave", "comment", "retired"));
+            assertThat(deleted.statusCode()).isEqualTo(302);
+
+            await().atMost(Duration.ofSeconds(2)).untilAsserted(() -> {
+                for (String url : instanceUrls) {
+                    assertThat(currentConfigOf(url)).doesNotContain("limits.max");
+                }
+            });
+            assertThat(getHtml(adminUrl + "/services/payments/history?key=limits.max"))
+                    .contains("v2", "dave", "(deleted)", "retired", "Restore");
+        }
     }
 
     private static ConfigurableApplicationContext startService() {
+        return startService("orders");
+    }
+
+    private static ConfigurableApplicationContext startService(String name) {
         return new SpringApplicationBuilder(DemoServiceApplication.class).run(
                 "--server.port=0",
-                "--spring.application.name=orders",
+                "--spring.application.name=" + name,
                 NO_MONGO_AUTOCONFIG,
                 "--config-core.team=team-a",
-                "--config-core.mongo.uri=" + MONGO.getReplicaSetUrl("orders"),
+                "--config-core.mongo.uri=" + MONGO.getReplicaSetUrl(name),
                 "--config-core.internal.secret=" + SECRET,
                 "--config-core.admin.url=" + adminUrl,
                 "--config-core.admin.heartbeat-interval=200ms",
@@ -105,6 +161,32 @@ class ConfigAdminEndToEndIT {
                                 .formatted(key, value)))
                 .build();
         assertThat(http.send(request, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(200);
+    }
+
+    private static String urlOf(ConfigurableApplicationContext service) {
+        return "http://localhost:" + service.getEnvironment().getProperty("local.server.port");
+    }
+
+    /** What this one instance's cache holds, as JSON. */
+    private static String currentConfigOf(String serviceUrl) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(serviceUrl + "/internal/config"))
+                .header("X-Config-Core-Secret", SECRET)
+                .build();
+        return http.send(request, HttpResponse.BodyHandlers.ofString()).body();
+    }
+
+    /** Submits a form to the admin UI the way a browser would (redirects are not followed). */
+    private static HttpResponse<String> postForm(String path, Map<String, String> fields)
+            throws IOException, InterruptedException {
+        String body = fields.entrySet().stream()
+                .map(e -> URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8) + "="
+                        + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
+                .collect(Collectors.joining("&"));
+        HttpRequest request = HttpRequest.newBuilder(URI.create(adminUrl + path))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+        return http.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
     private static String getHtml(String url) throws IOException, InterruptedException {

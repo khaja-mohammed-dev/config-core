@@ -4,6 +4,10 @@ spring:
 
 server:
   port: 8090
+  servlet:
+    session:
+      # Never put the session id in URLs (redirects, links), where it leaks into logs and history
+      tracking-modes: cookie
 
 config-admin:
   lease-duration: 45s

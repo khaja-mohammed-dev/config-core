@@ -79,6 +79,8 @@ config-core:
   secret the endpoints do not exist. Serve them over HTTPS only.
   - `POST /internal/config/update` with `{"key": "...", "value": "...", "changedBy": "alice", "comment": "optional"}`
     returns the recorded history entry (200), or 204 if the value was already set.
+  - `POST /internal/config/delete` with `{"key": "...", "changedBy": "alice", "comment": "optional"}` soft-deletes the
+    key and returns the recorded history entry (200), or 204 if the key had no value.
   - `GET /internal/config/history?key=...&limit=50` returns that key's changes, newest first.
   - `GET /internal/config` returns every value as this instance currently sees it.
 - **`admin.url`** makes the instance register with the admin app on startup, send heartbeats, and deregister on
@@ -87,13 +89,23 @@ config-core:
   new value, who, when, comment) in the same transaction as the change itself. To **roll back**, write the old value
   again, e.g. with `"comment": "Reverted to v3"`; history is never rewritten. Changes made directly in the database
   still reach every cache but are not recorded.
+- **Deletes are soft:** the document keeps its `_id` and `version` but loses its `value`, so the key leaves every cache
+  while its history stays. Writing the key again restores it and continues its version numbering.
 - If your app uses **Spring Security**, permit `/internal/config/**` and exclude it from CSRF protection; the shared
   secret is what authenticates these calls.
 
 ## config-admin
 
 A separate Spring Boot app, deployed once, that services register with (`config-core.admin.url`). It shows every
-registered service, its live instances (up/down from heartbeats), its current config and each key's change history.
+registered service, its live instances (up/down from heartbeats), its current config and each key's change history,
+and lets you add, edit, delete and restore entries.
+
+Every change takes two steps: an edit is reviewed against the current value before it is applied, and a delete is
+confirmed on its own page. The admin app never touches a service's database. It sends the change to any healthy
+instance of the service, which writes it with its own credentials, and every instance picks it up within about a
+second. Failures (no instance reachable, secret rejected, request invalid) are shown on the page. If an instance
+received the change but did not confirm it (a timeout or server error), the admin app does not retry on another
+instance. It tells you to check the key's history first, because the change may already have been applied.
 
 ```bash
 java -jar config-admin/target/config-admin-*.jar      # http://localhost:8090
@@ -108,8 +120,9 @@ config-admin:
   evict-after: 10m                    # removed from the registry after this long
 ```
 
-> **Read-only and unauthenticated for now.** Editing config arrives in Phase 5B, login and team-based access
-> control in Phase 6. Until then, run it only on a trusted network.
+> **No login yet, and it can change live config.** Anyone who can reach the admin app can edit any registered
+> service, and "changed by" is whatever they type. Login, team-based access control and CSRF protection arrive in
+> Phase 6. Until then, run it only on a trusted local or dev network.
 
 ## Local development
 

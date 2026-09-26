@@ -3,12 +3,17 @@ package io.github.khajamohammeddev.configadmin;
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.github.khajamohammeddev.configadmin.client.ServiceCallException;
@@ -17,17 +22,20 @@ import io.github.khajamohammeddev.configcore.api.ConfigHistoryEntry;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
-/** The registration API and the read-only UI, with calls to services mocked out. */
+/** The registration API and the UI, with calls to services mocked out. */
 // The config-core starter (and so the Mongo driver) is on the test classpath for the end-to-end test
 @SpringBootTest(properties = {
         "config-core.enabled=false",
@@ -128,6 +136,176 @@ class ConfigAdminApplicationTest {
                         containsString("Reverted to v1"),
                         containsString("2026-09-25 10:00:00 UTC"),
                         containsString("(created)"))));
+    }
+
+    @Test
+    void servicePageLinksToEditDeleteAndAdd() throws Exception {
+        register("orders", "o-1", 8080);
+        when(serviceClient.currentConfig("orders")).thenReturn(Map.of("limits.max", "50"));
+
+        mvc.perform(get("/services/orders"))
+                .andExpect(content().string(allOf(
+                        containsString("/services/orders/edit?key=limits.max"),
+                        containsString("/services/orders/delete?key=limits.max"),
+                        containsString("Add entry"))));
+    }
+
+    @Test
+    void editFormStartsFromTheCurrentValue() throws Exception {
+        register("orders", "o-1", 8080);
+        when(serviceClient.currentConfig("orders")).thenReturn(Map.of("limits.max", "50"));
+
+        mvc.perform(get("/services/orders/edit").param("key", "limits.max"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(allOf(
+                        containsString("Edit entry"),
+                        containsString("value=\"limits.max\""),
+                        containsString("readonly=\"readonly\""),
+                        containsString(">50</textarea>"))));
+        mvc.perform(get("/services/orders/edit"))
+                .andExpect(content().string(allOf(containsString("New entry"), not(containsString("readonly")))));
+    }
+
+    @Test
+    void reviewShowsCurrentAndNewValueBeforeAnythingIsWritten() throws Exception {
+        register("orders", "o-1", 8080);
+        when(serviceClient.currentConfig("orders")).thenReturn(Map.of("limits.max", "50"));
+
+        mvc.perform(post("/services/orders/edit/review")
+                        .param("key", "limits.max").param("value", "75").param("changedBy", "alice")
+                        .param("comment", "more traffic"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(allOf(
+                        containsString("Confirm change"),
+                        containsString(">50<"),
+                        containsString(">75<"),
+                        containsString("more traffic"),
+                        containsString("action=\"/services/orders/update\""),
+                        containsString("Apply change"))));
+        verify(serviceClient, never()).update(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void reviewOfANewKeySaysItWillBeCreated() throws Exception {
+        register("orders", "o-1", 8080);
+        when(serviceClient.currentConfig("orders")).thenReturn(Map.of());
+
+        mvc.perform(post("/services/orders/edit/review")
+                        .param("key", "brand.new").param("value", "").param("changedBy", "alice"))
+                .andExpect(content().string(containsString("this creates the key")));
+    }
+
+    @Test
+    void reviewRejectsInvalidAndUnchangedInput() throws Exception {
+        register("orders", "o-1", 8080);
+        when(serviceClient.currentConfig("orders")).thenReturn(Map.of("limits.max", "50"));
+
+        mvc.perform(post("/services/orders/edit/review").param("key", " ").param("value", "1"))
+                .andExpect(content().string(allOf(
+                        containsString("Key is required."),
+                        containsString("Enter your name"),
+                        not(containsString("Confirm change")))));
+        mvc.perform(post("/services/orders/edit/review")
+                        .param("key", "limits.max").param("value", "50").param("changedBy", "alice"))
+                .andExpect(content().string(allOf(
+                        containsString("already has this value"),
+                        not(containsString("Confirm change")))));
+    }
+
+    @Test
+    void applyingAnUpdateRedirectsWithAConfirmation() throws Exception {
+        register("orders", "o-1", 8080);
+        when(serviceClient.update("orders", "limits.max", "75", "alice", "more traffic"))
+                .thenReturn(Optional.of(entry("limits.max", 3, "50", "75")));
+
+        MvcResult result = mvc.perform(post("/services/orders/update")
+                        .param("key", "limits.max").param("value", "75").param("changedBy", " alice ")
+                        .param("comment", "more traffic"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/services/orders"))
+                .andExpect(flash().attribute("notice", containsString("Updated 'limits.max' (v3)")))
+                .andReturn();
+
+        // The name is remembered for the next change in this session
+        mvc.perform(get("/services/orders/delete").param("key", "limits.max")
+                        .session((MockHttpSession) result.getRequest().getSession()))
+                .andExpect(content().string(containsString("value=\"alice\"")));
+    }
+
+    @Test
+    void failedUpdateIsShownWithTheFormStillFilledIn() throws Exception {
+        register("orders", "o-1", 8080);
+        when(serviceClient.update(any(), any(), any(), any(), any()))
+                .thenThrow(new ServiceCallException("Could not reach any instance of 'orders' (1 tried)"));
+
+        mvc.perform(post("/services/orders/update")
+                        .param("key", "limits.max").param("value", "75").param("changedBy", "alice"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(allOf(
+                        containsString("Update failed: Could not reach any instance"),
+                        containsString(">75</textarea>"))));
+    }
+
+    @Test
+    void deleteAsksForConfirmationThenDeletes() throws Exception {
+        register("orders", "o-1", 8080);
+        when(serviceClient.currentConfig("orders")).thenReturn(Map.of("limits.max", "50"));
+        when(serviceClient.delete("orders", "limits.max", "bob", null))
+                .thenReturn(Optional.of(entry("limits.max", 4, "50", null)));
+
+        mvc.perform(get("/services/orders/delete").param("key", "limits.max"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(allOf(
+                        containsString("Delete <code>limits.max</code>?"),
+                        containsString(">50<"),
+                        containsString("Delete key"))));
+        verify(serviceClient, never()).delete(any(), any(), any(), any());
+
+        mvc.perform(post("/services/orders/delete").param("key", "limits.max").param("changedBy", "bob")
+                        .param("comment", ""))
+                .andExpect(redirectedUrl("/services/orders"))
+                .andExpect(flash().attribute("notice", containsString("Deleted 'limits.max' (v4)")));
+    }
+
+    @Test
+    void failedDeleteIsShown() throws Exception {
+        register("orders", "o-1", 8080);
+        when(serviceClient.delete(any(), any(), any(), any()))
+                .thenThrow(new ServiceCallException("'orders' rejected the configured secret."));
+
+        mvc.perform(post("/services/orders/delete").param("key", "limits.max").param("changedBy", "bob"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("Delete failed: &#39;orders&#39; rejected the configured secret.")));
+        mvc.perform(post("/services/orders/delete").param("key", "limits.max"))
+                .andExpect(content().string(containsString("Enter your name")));
+    }
+
+    @Test
+    void historyShowsDeletionsAndOffersRestore() throws Exception {
+        register("orders", "o-1", 8080);
+        when(serviceClient.history("orders", "limits.max", 100)).thenReturn(List.of(
+                entry("limits.max", 3, "50", null),
+                entry("limits.max", 2, "10", "50"),
+                entry("limits.max", 1, null, "10")));
+
+        mvc.perform(get("/services/orders/history").param("key", "limits.max"))
+                .andExpect(content().string(allOf(
+                        containsString("(deleted)"),
+                        containsString("value=50&amp;comment=Restored%20after%20deletion%20in%20v3"),
+                        containsString("value=10&amp;comment=Reverted%20to%20v1"))));
+    }
+
+    @Test
+    void writePagesFor404UnknownServices() throws Exception {
+        mvc.perform(get("/services/nope/edit")).andExpect(status().isNotFound());
+        mvc.perform(post("/services/nope/update").param("key", "a").param("value", "1").param("changedBy", "x"))
+                .andExpect(status().isNotFound());
+        verify(serviceClient, never()).update(any(), any(), any(), any(), any());
+    }
+
+    private static ConfigHistoryEntry entry(String key, long version, String oldValue, String newValue) {
+        return new ConfigHistoryEntry(key, version, oldValue, newValue, "alice", Instant.parse("2026-09-25T10:00:00Z"),
+                null);
     }
 
     private void register(String service, String id, int port) throws Exception {

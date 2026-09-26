@@ -9,7 +9,7 @@ import java.util.Objects;
  * @param key       the config key
  * @param version   per-key version this change produced, starting at 1
  * @param oldValue  the value before the change, or {@code null} if the key was created
- * @param newValue  the value after the change
+ * @param newValue  the value after the change, or {@code null} if the key was deleted
  * @param changedBy who made the change
  * @param changedAt when the change was made
  * @param comment   optional reason, e.g. {@code "Reverted to v3"}; may be {@code null}
@@ -20,8 +20,12 @@ public record ConfigHistoryEntry(
 
     public ConfigHistoryEntry {
         Objects.requireNonNull(key, "key");
-        Objects.requireNonNull(newValue, "newValue");
         Objects.requireNonNull(changedBy, "changedBy");
         Objects.requireNonNull(changedAt, "changedAt");
+    }
+
+    /** Whether this change deleted the key. */
+    public boolean deleted() {
+        return newValue == null;
     }
 }

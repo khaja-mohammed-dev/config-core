@@ -17,4 +17,13 @@ public interface ConfigWriter {
      *     written and no version is used up)
      */
     Optional<ConfigHistoryEntry> write(ConfigUpdate update);
+
+    /**
+     * Soft-deletes the key: it is removed from every cache, and its deletion is recorded in the history
+     * (with a {@code null} new value). The key's history and version numbering are kept.
+     *
+     * @return the recorded history entry, or empty if the key has no value (it never existed or was
+     *     already deleted)
+     */
+    Optional<ConfigHistoryEntry> delete(ConfigDeletion deletion);
 }

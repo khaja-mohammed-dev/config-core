@@ -5,23 +5,28 @@ import io.github.khajamohammeddev.configadmin.registry.InstanceRegistry;
 import io.github.khajamohammeddev.configadmin.registry.RegisteredInstance;
 import io.github.khajamohammeddev.configadmin.registry.ServiceSummary;
 import io.github.khajamohammeddev.configcore.api.ConfigHistoryEntry;
+import java.net.ConnectException;
+import java.net.UnknownHostException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.BiFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 /**
  * Calls a service's config-core internal endpoints ({@code /internal/config/**}). Every instance
- * of a service reads the same store, so any healthy instance can answer: instances are tried in
- * turn until one responds.
+ * of a service reads and writes the same store, so any healthy instance can answer: instances are
+ * tried in turn until one responds.
  */
 @Component
 public class ServiceClient {
@@ -61,7 +66,45 @@ public class ServiceClient {
                 .body(new ParameterizedTypeReference<List<ConfigHistoryEntry>>() {}));
     }
 
+    /**
+     * Sets {@code key} to {@code value} through the service, recording who changed it and why.
+     *
+     * @return the recorded history entry, or empty if the key already had this value
+     */
+    public Optional<ConfigHistoryEntry> update(String serviceName, String key, String value, String changedBy,
+            String comment) {
+        return write(serviceName, "/internal/config/update", new UpdateRequest(key, value, changedBy, comment));
+    }
+
+    /**
+     * Soft-deletes {@code key} through the service.
+     *
+     * @return the recorded history entry, or empty if the key had no value (already deleted)
+     */
+    public Optional<ConfigHistoryEntry> delete(String serviceName, String key, String changedBy, String comment) {
+        return write(serviceName, "/internal/config/delete", new DeleteRequest(key, changedBy, comment));
+    }
+
+    private Optional<ConfigHistoryEntry> write(String serviceName, String path, Object body) {
+        return Optional.ofNullable(call(serviceName, true, (baseUrl, secret) -> http.post()
+                .uri(baseUrl + path)
+                .header(SECRET_HEADER, secret)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(ConfigHistoryEntry.class))); // null for 204: nothing changed
+    }
+
     private <T> T call(String serviceName, BiFunction<String, String, T> request) {
+        return call(serviceName, false, request);
+    }
+
+    /**
+     * Tries each healthy instance in turn. Reads fail over on any error; writes only when the request
+     * never reached the instance, because after a timeout or server error the change may already be
+     * committed, and retrying elsewhere would report it as "nothing changed".
+     */
+    private <T> T call(String serviceName, boolean isWrite, BiFunction<String, String, T> request) {
         ServiceSummary service = registry.service(serviceName)
                 .orElseThrow(() -> new ServiceCallException("No service named '" + serviceName + "' is registered."));
         String secret = properties.secretFor(serviceName);
@@ -90,13 +133,32 @@ public class ServiceClient {
                     throw new ServiceCallException("'" + serviceName + "' does not expose the config-core internal "
                             + "endpoints. Is config-core.internal.secret set on the service?", e);
                 }
-                lastFailure = e;
+                // Any other 4xx: the request itself was rejected, and every instance would reject it too
+                throw new ServiceCallException("'" + serviceName + "' rejected the request: " + e.getStatusText()
+                        + " (" + e.getStatusCode().value() + ").", e);
             } catch (RestClientException e) {
+                if (isWrite && !neverReachedInstance(e)) {
+                    throw new ServiceCallException("'" + serviceName + "' did not confirm the change ("
+                            + e.getMessage() + "). It may or may not have been applied: check the key's history "
+                            + "before trying again.", e);
+                }
                 log.debug("Call to {} at {} failed; trying next instance", serviceName, baseUrl, e);
                 lastFailure = e;
             }
         }
         throw new ServiceCallException("Could not reach any instance of '" + serviceName + "' ("
                 + baseUrls.size() + " tried): " + lastFailure.getMessage(), lastFailure);
+    }
+
+    /** True if the connection itself failed, so the instance cannot have acted on the request. */
+    private static boolean neverReachedInstance(RestClientException e) {
+        return e instanceof ResourceAccessException
+                && (e.getCause() instanceof ConnectException || e.getCause() instanceof UnknownHostException);
+    }
+
+    private record UpdateRequest(String key, String value, String changedBy, String comment) {
+    }
+
+    private record DeleteRequest(String key, String changedBy, String comment) {
     }
 }

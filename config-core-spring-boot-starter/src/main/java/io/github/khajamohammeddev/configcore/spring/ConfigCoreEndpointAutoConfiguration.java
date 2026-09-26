@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.web.servlet.DispatcherServlet;
 
 /**
- * Registers the {@code /internal/config} endpoints (current values, update, history), but only when
+ * Registers the {@code /internal/config} endpoints (current values, update, delete, history), but only when
  * {@code config-core.internal.secret} is set: they are off unless explicitly configured, never open
  * by default.
  */
