@@ -1,4 +1,4 @@
-# config-core
+# configstream
 
 > Push-based, restart-free feature flags and configuration for Spring Boot — using the database you already run.
 
@@ -6,7 +6,7 @@
 
 ## What it does
 
-`config-core` keeps feature flags and non-secret properties in a database collection/table, loads them into an
+`configstream` keeps feature flags and non-secret properties in a database collection/table, loads them into an
 in-memory cache at startup, and updates that cache **instantly across every running instance** when a value changes —
 using the database's native change notifications (MongoDB Change Streams; PostgreSQL `LISTEN/NOTIFY` planned).
 No restarts, no polling, no message broker, no new infrastructure.
@@ -23,10 +23,10 @@ A/B experimentation (see Unleash or LaunchDarkly).
 
 | Module | Purpose |
 |---|---|
-| `config-core-api` | Storage-agnostic contracts + in-memory cache |
-| `config-core-mongo` | MongoDB Change Streams backend |
-| `config-core-spring-boot-starter` | **Client**: add to each service. `ConfigService` bean, `ConfigChangedEvent`, internal endpoints, registration with the admin server |
-| `config-admin-spring-boot-starter` | **Server**: add to one Spring Boot app, plus `@EnableConfigAdminServer`. Service registry + dashboard |
+| `configstream-api` | Storage-agnostic contracts + in-memory cache |
+| `configstream-mongo` | MongoDB Change Streams backend |
+| `configstream-spring-boot-starter` | **Client**: add to each service. `ConfigService` bean, `ConfigChangedEvent`, internal endpoints, registration with the admin server |
+| `configstream-admin-spring-boot-starter` | **Server**: add to one Spring Boot app, plus `@EnableConfigStreamAdminServer`. Service registry + dashboard |
 
 Like Eureka, there is a client starter and a server starter. Every service adds the client; one app, deployed once,
 adds the server. Config changes do not travel through the admin server: it asks a service to write the change, and
@@ -34,10 +34,10 @@ MongoDB change streams push it to every instance.
 
 ## Usage (Spring Boot)
 
-Add `config-core-spring-boot-starter` to your dependencies, then point it at a MongoDB replica set:
+Add `configstream-spring-boot-starter` to your dependencies, then point it at a MongoDB replica set:
 
 ```yaml
-config-core:
+configstream:
   mongo:
     uri: mongodb://localhost:27017/mydb?replicaSet=rs0
     collection: config        # optional, defaults to "config"
@@ -63,23 +63,23 @@ class Checkout {
 }
 ```
 
-config-core uses its own connection and does not replace your application's `MongoClient` bean.
+configstream uses its own connection and does not replace your application's `MongoClient` bean.
 
-### Connecting to config-admin (optional)
+### Connecting to the admin server (optional)
 
 ```yaml
 spring.application.name: orders
-config-core:
+configstream:
   team: team-a
   internal:
-    secret: ${CONFIG_CORE_SECRET}      # at least 16 chars; e.g. `openssl rand -hex 32`
+    secret: ${CONFIGSTREAM_SECRET}      # at least 16 chars; e.g. `openssl rand -hex 32`
   admin:
-    url: https://config-admin.internal
+    url: https://configstream-admin.internal
     heartbeat-interval: 15s            # default
 ```
 
 - **`internal.secret`** enables the internal endpoints, through which the admin app changes config using *this
-  service's* database credentials. Callers must send the secret in the `X-Config-Core-Secret` header. Without a
+  service's* database credentials. Callers must send the secret in the `X-ConfigStream-Secret` header. Without a
   secret the endpoints do not exist. Serve them over HTTPS only.
   - `POST /internal/config/update` with `{"key": "...", "value": "...", "changedBy": "alice", "comment": "optional"}`
     returns the recorded history entry (200), or 204 if the value was already set.
@@ -89,7 +89,7 @@ config-core:
   - `GET /internal/config` returns every value as this instance currently sees it.
 - **`admin.url`** makes the instance register with the admin app on startup, send heartbeats, and deregister on
   shutdown. If the admin app is down or unreachable the service still starts and keeps retrying in the background.
-- **History:** every change made through config-core is appended to `<collection>_history` (key, version, old and
+- **History:** every change made through configstream is appended to `<collection>_history` (key, version, old and
   new value, who, when, comment) in the same transaction as the change itself. To **roll back**, write the old value
   again, e.g. with `"comment": "Reverted to v3"`; history is never rewritten. Changes made directly in the database
   still reach every cache but are not recorded.
@@ -98,9 +98,9 @@ config-core:
 - If your app uses **Spring Security**, permit `/internal/config/**` and exclude it from CSRF protection; the shared
   secret is what authenticates these calls.
 
-## config-admin server
+## Admin server
 
-The admin server is the app services register with (`config-core.admin.url`). It shows every registered service, its
+The admin server is the app services register with (`configstream.admin.url`). It shows every registered service, its
 live instances (up/down from heartbeats), its current config and each key's change history, and lets you add, edit,
 delete and restore entries. Deploy one per environment.
 
@@ -108,17 +108,17 @@ Turn any Spring Boot web app into the admin server, the way `@EnableEurekaServer
 
 ```xml
 <dependency>
-    <groupId>io.github.khaja-mohammed-dev</groupId>
-    <artifactId>config-admin-spring-boot-starter</artifactId>
+    <groupId>io.github.configstream</groupId>
+    <artifactId>configstream-admin-spring-boot-starter</artifactId>
 </dependency>
 ```
 
 ```java
 @SpringBootApplication
-@EnableConfigAdminServer
-public class ConfigAdminApp {
+@EnableConfigStreamAdminServer
+public class ConfigStreamAdminApp {
     public static void main(String[] args) {
-        SpringApplication.run(ConfigAdminApp.class, args);
+        SpringApplication.run(ConfigStreamAdminApp.class, args);
     }
 }
 ```
@@ -134,20 +134,21 @@ received the change but did not confirm it (a timeout or server error), the admi
 instance. It tells you to check the key's history first, because the change may already have been applied.
 
 ```yaml
-config-admin:
-  service-secrets:
-    orders: ${ORDERS_CONFIG_SECRET}   # must match that service's config-core.internal.secret
-  # default-service-secret: ...       # for services not listed above
-  lease-duration: 45s                 # shown as down after this long without a heartbeat
-  evict-after: 10m                    # removed from the registry after this long
-  dashboard:
-    path: /                           # e.g. /config-admin if the app has pages of its own
+configstream:
+  admin-server:
+    service-secrets:
+      orders: ${ORDERS_CONFIG_SECRET}   # must match that service's configstream.internal.secret
+    # default-service-secret: ...       # for services not listed above
+    lease-duration: 45s                 # shown as down after this long without a heartbeat
+    evict-after: 10m                    # removed from the registry after this long
+    dashboard:
+      path: /                           # e.g. /admin if the app has pages of its own
 
 server.servlet.session.tracking-modes: cookie   # recommended: keeps session ids out of URLs
 ```
 
 The registration API is always at `/api/instances`, whatever the dashboard path. The dashboard's templates and CSS
-live under `config-admin/`, so they do not clash with the host app's own.
+live under `configstream-admin/`, so they do not clash with the host app's own.
 
 > **No login yet, and it can change live config.** Anyone who can reach the admin app can edit any registered
 > service, and "changed by" is whatever they type. Login, team-based access control and CSRF protection arrive in
